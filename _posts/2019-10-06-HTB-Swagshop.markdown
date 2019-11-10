@@ -2,7 +2,6 @@
 layout: post
 title:  "HTB Writeup - Swagshop"
 date:   2019-10-06 12:59:50 +0000
-categories: jekyll update
 ---
 
 # HTB Swagshop - writeup

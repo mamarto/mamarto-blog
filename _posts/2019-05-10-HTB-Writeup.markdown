@@ -2,7 +2,6 @@
 layout: post
 title:  "HTB Writeup - Writeup"
 date:   2019-05-11 12:59:50 +0000
-categories: jekyll update
 ---
 
 

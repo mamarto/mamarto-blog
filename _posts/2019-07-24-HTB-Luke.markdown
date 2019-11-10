@@ -2,10 +2,9 @@
 layout: post
 title: "HTB Writeup - Luke"
 date: 2019-07-24 12:00:00 +0000
-categories: jekyll update
 ---
 
-# HTB Luke - Writeup
+# HTB writeup - Luke
 <br />
 As always let's start with nmap:
 ```
