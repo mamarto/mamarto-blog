@@ -132,7 +132,7 @@ root@kali:~/Desktop/HTB/boxes/luke# curl http://luke.htb:3000/
 {"success":false,"message":"Auth token is not supplied"}
 ```
 
-Googling the response, I found [this article on medium]([https://medium.com/dev-bits/a-guide-for-adding-jwt-token-based-authentication-to-your-single-page-nodejs-applications-c403f7cf04f4]).
+Googling the response, I found [this article on medium](https://medium.com/dev-bits/a-guide-for-adding-jwt-token-based-authentication-to-your-single-page-nodejs-applications-c403f7cf04f4).
 
 Fuzzing the application, we can see that the /login does exist:
 ```

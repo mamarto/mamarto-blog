@@ -198,7 +198,7 @@ The link pointed to some PDF generation page. Here we could insert some code and
 
 Checking the actual response that the server was giving me, I could see that there was some LaTeX engine behind the page, as the response contained the execution log of the pdflatex command.
 
-I googled for potential vulnerability, and found that [it was possible to inject commands by using \immediate\write18{$CMD} in the PDF generation box]([https://0day.work/hacking-with-latex/]).
+I googled for potential vulnerability, and found that [it was possible to inject commands by using \immediate\write18{$CMD} in the PDF generation box][(https://0day.work/hacking-with-latex/).
 
 First I tried some commands to see what I could do, checking the output from the server response. After I could not find anything interesting I decided to just execute as CMD a Python reverse shell, while listening with nc from Kali. So I got a shell as www-data.
 

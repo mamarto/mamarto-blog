@@ -60,7 +60,7 @@ Heading to 10.10.10.138/writeup/doc/CHANGELOG.txt we can see the exact version!
 
 
 
-I searched for exploits for CMS Made Simple, and the only one for our version is [this SQL injection exploit]([https://www.exploit-db.com/exploits/46635]), which appears to look very "hollywood style", since it prints the character tested on screen while running:
+I searched for exploits for CMS Made Simple, and the only one for our version is [this SQL injection exploit](https://www.exploit-db.com/exploits/46635), which appears to look very "hollywood style", since it prints the character tested on screen while running:
 
 ```
 [+] Salt for password found: 5a599ef579066807
